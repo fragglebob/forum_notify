@@ -1,0 +1,104 @@
+<?php
+
+// HOOK_nodeapi Send Email to users in role when new forum topic is made.
+
+function forum_notify_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL)
+{
+	if($op == 'insert')
+	{
+		if($node->type == 'forum')
+		{
+		    $roles = variable_get('forum_notify_user_roles',array());
+		    $shit = array(
+		    	'author' => $node->name,
+		    	'title' =>$node->title,
+		    	'body' => $node->body,
+		    	'timestamp' => $node->created,
+		    );
+		    foreach($roles as $role)
+		    {
+		    	$query = db_query("SELECT u.uid, u.name, u.mail FROM {users_roles} AS r
+		    			LEFT JOIN {users} AS u on r.uid = u.uid
+		    			WHERE r.rid = %d", $role);
+		    	while ($user = db_fetch_array($query))
+    		    {
+		    		$shit['emailing'] = $user['name'];
+		    		if($user['uid'] != $node->uid)
+		    		{
+		    			drupal_mail('forum_notify', 'topic', $user['mail'], language_default(), $shit);
+		    		}
+    		    }
+		    }
+		}
+	}
+}
+
+// HOOK_comment Send Email to users in role when new comment is added in forum.
+
+function forum_notify_comment(&$a1, $op)
+{
+	if($op == 'insert')
+	{
+		$node = node_load($a1['nid']);
+		if($node->type == 'forum')
+		{
+			$roles = variable_get('forum_notify_user_roles',array());
+			$shit = array(
+				'author' => $a1['author'],
+				'subject' => $a1['subject'],
+				'comment' => $a1['comment'],
+				'timestamp' => $a1['timestamp'],
+				'node' => $node->title,
+			);
+			foreach($roles as $role)
+			{
+				$query = db_query("SELECT u.uid, u.name, u.mail FROM {users_roles} AS r
+						LEFT JOIN {users} AS u on r.uid = u.uid
+						WHERE r.rid = %d", $role);
+				while ($user = db_fetch_array($query))
+        	    {
+					$shit['emailing'] = $user['name'];
+					if($user['uid'] != $a1['uid'])
+					{
+						drupal_mail('forum_notify', 'comment', $user['mail'], language_default(), $shit);
+					}
+        	    }
+			}
+		}
+	}	
+}
+
+// HOOK_mail Put together the two different emails. 
+
+function forum_notify_mail($key, &$message, $params)
+{
+    switch($key)
+    {
+      case 'comment':
+      $message['subject'] = $params['author'] . ' has commented on: ' . $params['node'];
+      $message['body'][] = "Dear " . $params['emailing'] . "\n\n" . $params['author'] . " has writen a comment on " . $params['node'] . ":\n\nSubject: " . $params['subject'] . "\n\n" . $params['comment'] . "\n\nAt " . date('h:i a \o\n \t\h\e jS M Y', $params['timestamp']);
+      break;
+      case 'topic':
+      $message['subject'] = $params['author'] . ' has made a new topic: ' . $params['title'];
+      $message['body'][] = "Dear " . $params['emailing'] . "\n\n" . $params['author'] . " has started a new topic: " . $params['title'] . "\n\n" . $params['body'] . "\n\nAt " . date('h:i a \o\n \t\h\e jS M Y', $params['timestamp']);
+      break;
+    }
+}
+
+// HOOK_form_alter Edit the forum settings page so you can choose which role to send to.
+
+function forum_notify_form_alter(&$form, &$form_state, $form_id)
+{
+	if($form_id == 'forum_admin_settings')
+	{
+		$form['buttons']['#weight'] = 10;
+		$form['forum_notify_user_roles'] = array(
+			'#type' => 'select',
+			'#multiple' => TRUE,
+			'#default_value' => variable_get('forum_notify_user_roles',array()),
+			'#options' => user_roles(TRUE),
+			'#description' => t('Set which roles will get an email telling them about an update on the forum.'),
+			'#weight' => '1',
+		);
+	}
+}

@@ -1,0 +1,4 @@
+name = Forum notify
+description = Lets all users in a role know that someone has added something to the forum.
+package = Forum
+core = 6.x
